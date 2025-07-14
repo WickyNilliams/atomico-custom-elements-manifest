@@ -23,159 +23,235 @@ export default () => ({
                     }
                 }
                 break;
+            
             /**
-             * Capture all function declarations
-             * and extract your jsDoc
-             */
-            case ts.SyntaxKind.FunctionDeclaration:
-                {
-                    if (!context.isAtomico) break;
-                    const fnName = node?.name?.escapedText;
-                    context.components[fnName] = {
-                        jsDoc: node?.jsDoc
-                            ?.map(({ tags, comment }) => [
-                                { comment },
-                                ...tags.map(
-                                    ({
-                                        tagName: { escapedText: tag },
-                                        comment,
-                                    }) => ({
-                                        tag,
-                                        comment,
-                                    })
-                                ),
-                            ])
-                            .flat(),
-                    };
-                }
-                break;
-            /**
-             *  Evaluate which functions of the captured ones use the function `c` of `Atomico`.
+             * Analyze the new inline c() syntax:
+             * const Component = c(({ prop }) => <host/>, { props: { prop: String } })
              */
             case ts.SyntaxKind.CallExpression:
                 {
                     if (!context.isAtomico) break;
+                    
                     const callC = node.expression.escapedText;
-                    const elementName = node.parent?.name?.escapedText;
-                    const fnName = node.arguments?.[0]?.escapedText;
-                    if (callC == "c" && context.components[fnName]) {
-                        context.components[fnName].constructor = elementName;
-                    }
-                }
-                break;
-            /**
-             * Look for functions that declare the props object.
-             */
-            case ts.SyntaxKind.ObjectLiteralExpression:
-                {
-                    if (!context.isAtomico) break;
-                    const parentFnName =
-                        node.parent?.left?.expression?.escapedText;
-                    const textProps = node.parent?.left?.name?.escapedText;
-
-                    if (
-                        textProps == "props" &&
-                        context.components[parentFnName]
-                    ) {
-                        context.components[parentFnName].props =
-                            node.properties.map(
-                                ({
-                                    name: { escapedText: prop },
-                                    initializer: {
-                                        escapedText: type,
-                                        properties,
-                                    },
-                                    jsDoc,
-                                }) => [
-                                    prop,
-                                    type
-                                        ? {
-                                              type,
-                                              description: getComment(jsDoc),
-                                          }
-                                        : properties?.reduce(
-                                              (
-                                                  schema,
-                                                  {
-                                                      name: {
-                                                          escapedText: prop,
-                                                      },
-                                                      initializer: {
-                                                          escapedText: type,
-                                                          properties,
-                                                      },
-                                                      jsDoc,
-                                                  }
-                                              ) => {
-                                                  switch (prop) {
-                                                      case "type":
-                                                      case "value":
-                                                      case "attr":
-                                                          schema[prop] = type;
-                                                          break;
-                                                      case "event":
-                                                          schema[prop] =
-                                                              properties.reduce(
-                                                                  (
-                                                                      schema,
-                                                                      {
-                                                                          name: {
-                                                                              escapedText:
-                                                                                  prop,
-                                                                          },
-                                                                          initializer:
-                                                                              {
-                                                                                  text: type,
-                                                                              },
-                                                                      }
-                                                                  ) => {
-                                                                      switch (
-                                                                          prop
-                                                                      ) {
-                                                                          case "type":
-                                                                          case "base":
-                                                                              schema[
-                                                                                  prop
-                                                                              ] =
-                                                                                  type;
-                                                                              break;
-                                                                      }
-                                                                      return schema;
-                                                                  },
-                                                                  {
-                                                                      base: "CustomEvent",
-                                                                      description:
-                                                                          getComment(
-                                                                              jsDoc
-                                                                          ),
-                                                                  }
-                                                              );
-                                                          break;
-                                                  }
-                                                  return schema;
-                                              },
-                                              {
-                                                  description:
-                                                      getComment(jsDoc),
-                                              }
-                                          ),
-                                ]
-                            );
+                    if (callC === "c" && node.arguments?.length >= 1) {
+                        const elementName = node.parent?.name?.escapedText;
+                        const arrowFunction = node.arguments[0];
+                        const configObject = node.arguments[1];
+                        
+                        if (elementName && arrowFunction) {
+                            // Initialize component data
+                            context.components[elementName] = {
+                                jsDoc: arrowFunction.jsDoc,
+                                props: [],
+                                events: [],
+                                constructor: elementName
+                            };
+                            
+                            // Extract props from arrow function parameters
+                            this.extractPropsFromParameters(arrowFunction, context.components[elementName]);
+                            
+                            // Extract events from Host<> type annotation
+                            this.extractEventsFromHostType(arrowFunction, context.components[elementName]);
+                            
+                            // Extract configuration from second argument
+                            if (configObject) {
+                                this.extractFromConfigObject(configObject, context.components[elementName]);
+                            }
+                        }
                     }
                 }
                 break;
         }
     },
+    
     /**
-     *  Once analyzed, the module creates the metadata captured from the document through the context
+     * Extract prop types from arrow function parameters
+     * ({ message, count }: { message: string, count: number }) => ...
+     */
+    extractPropsFromParameters(arrowFunction, component) {
+        const params = arrowFunction.parameters;
+        if (!params || params.length === 0) return;
+        
+        const firstParam = params[0];
+        if (firstParam.type && firstParam.type.kind === ts.SyntaxKind.TypeLiteral) {
+            // Handle typed parameters: { message: string, count: number }
+            firstParam.type.members.forEach(member => {
+                if (member.name && member.type) {
+                    const propName = member.name.escapedText;
+                    const propType = this.getTypeFromTypeNode(member.type);
+                    const description = getComment(member.jsDoc);
+                    
+                    component.props.push([propName, {
+                        type: propType,
+                        description
+                    }]);
+                }
+            });
+        } else if (firstParam.name && firstParam.name.kind === ts.SyntaxKind.ObjectBindingPattern) {
+            // Handle destructured parameters: ({ message, count }) => ...
+            firstParam.name.elements.forEach(element => {
+                if (element.name) {
+                    const propName = element.name.escapedText;
+                    // Without explicit typing, we'll rely on config object
+                    component.props.push([propName, null]);
+                }
+            });
+        }
+    },
+    
+    /**
+     * Extract events from Host<{...}> return type annotation
+     */
+    extractEventsFromHostType(arrowFunction, component) {
+        const returnType = arrowFunction.type;
+        if (!returnType) return;
+        
+        // Look for Host<{...}> type reference
+        if (returnType.kind === ts.SyntaxKind.TypeReference && 
+            returnType.typeName?.escapedText === "Host" &&
+            returnType.typeArguments?.length > 0) {
+            
+            const hostType = returnType.typeArguments[0];
+            if (hostType.kind === ts.SyntaxKind.TypeLiteral) {
+                hostType.members.forEach(member => {
+                    if (member.name && member.type) {
+                        const eventName = member.name.escapedText;
+                        const eventType = this.getEventTypeFromTypeNode(member.type);
+                        const description = getComment(member.jsDoc);
+                        
+                        component.events.push({
+                            name: eventName,
+                            type: eventType,
+                            description
+                        });
+                    }
+                });
+            }
+        }
+    },
+    
+    /**
+     * Extract configuration from the second argument object
+     */
+    extractFromConfigObject(configObject, component) {
+        if (configObject.kind !== ts.SyntaxKind.ObjectLiteralExpression) return;
+        
+        configObject.properties.forEach(prop => {
+            if (prop.name?.escapedText === "props" && 
+                prop.initializer?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
+                
+                // Process props configuration: { message: String, count: Number }
+                prop.initializer.properties.forEach(propDef => {
+                    const propName = propDef.name?.escapedText;
+                    if (!propName) return;
+                    
+                    // Find existing prop or create new one
+                    let existingProp = component.props.find(([name]) => name === propName);
+                    if (!existingProp) {
+                        existingProp = [propName, {}];
+                        component.props.push(existingProp);
+                    }
+                    
+                    // Update prop schema
+                    if (propDef.initializer) {
+                        if (propDef.initializer.escapedText) {
+                            // Simple type: message: String
+                            existingProp[1] = {
+                                type: propDef.initializer.escapedText,
+                                description: getComment(propDef.jsDoc)
+                            };
+                        } else if (propDef.initializer.kind === ts.SyntaxKind.ObjectLiteralExpression) {
+                            // Complex prop definition
+                            const propSchema = this.parseComplexPropDefinition(propDef.initializer, propDef.jsDoc);
+                            existingProp[1] = propSchema;
+                        }
+                    }
+                });
+            }
+        });
+    },
+    
+    /**
+     * Parse complex prop definition like: { type: Array, event: { type: "MyEvent" } }
+     */
+    parseComplexPropDefinition(objectLiteral, jsDoc) {
+        const schema = {
+            description: getComment(jsDoc)
+        };
+        
+        objectLiteral.properties.forEach(prop => {
+            const propName = prop.name?.escapedText;
+            
+            switch (propName) {
+                case "type":
+                case "value":
+                case "attr":
+                    schema[propName] = prop.initializer?.escapedText;
+                    break;
+                case "event":
+                    if (prop.initializer?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
+                        schema.event = prop.initializer.properties.reduce((eventSchema, eventProp) => {
+                            const eventPropName = eventProp.name?.escapedText;
+                            switch (eventPropName) {
+                                case "type":
+                                case "base":
+                                    eventSchema[eventPropName] = eventProp.initializer?.text || eventProp.initializer?.escapedText;
+                                    break;
+                            }
+                            return eventSchema;
+                        }, {
+                            base: "CustomEvent",
+                            description: getComment(jsDoc)
+                        });
+                    }
+                    break;
+            }
+        });
+        
+        return schema;
+    },
+    
+    /**
+     * Convert TypeScript type node to string representation
+     */
+    getTypeFromTypeNode(typeNode) {
+        switch (typeNode.kind) {
+            case ts.SyntaxKind.StringKeyword:
+                return "String";
+            case ts.SyntaxKind.NumberKeyword:
+                return "Number";
+            case ts.SyntaxKind.BooleanKeyword:
+                return "Boolean";
+            case ts.SyntaxKind.ArrayType:
+                return "Array";
+            case ts.SyntaxKind.TypeReference:
+                return typeNode.typeName?.escapedText || "Object";
+            default:
+                return "Object";
+        }
+    },
+    
+    /**
+     * Extract event type from CustomEvent<T> type annotation
+     */
+    getEventTypeFromTypeNode(typeNode) {
+        if (typeNode.kind === ts.SyntaxKind.TypeReference && 
+            typeNode.typeName?.escapedText === "CustomEvent") {
+            return "CustomEvent";
+        }
+        return "Event";
+    },
+
+    /**
+     * Once analyzed, the module creates the metadata captured from the document through the context
      */
     moduleLinkPhase({ moduleDoc, context: { isAtomico, components } }) {
         if (!isAtomico) return;
-        // context.components
+        
         moduleDoc.declarations = moduleDoc.declarations.map((ref) => {
             for (let prop in components) {
                 const schema = components[prop];
-                if (ref.name == schema.constructor) {
+                if (ref.name === schema.constructor) {
                     const declarations = {
                         slots: [],
                         events: [],
@@ -184,16 +260,12 @@ export default () => ({
                         attributes: [],
                         cssProperties: [],
                     };
+                    
+                    // Process JSDoc tags (reuse existing logic)
                     if (schema.jsDoc) {
-                        /**
-                         * Apply an analysis on the jsDoc associated with the function,
-                         * this analysis is limited to switch tags.
-                         */
                         schema.jsDoc
-                            .filter(({ tag }) => tag)
-                            .map(({ tag, comment }) =>
-                                parseComment(`@${tag} ${comment}`)
-                            )
+                            .filter(({ comment }) => comment)
+                            .map(({ comment }) => parseComment(comment))
                             .flat()
                             .forEach(({ tag, type: text, name, children }) => {
                                 const type = { text };
@@ -206,16 +278,14 @@ export default () => ({
                                 switch (tag) {
                                     case "cssprop":
                                     case "cssproperty":
-                                        declarations.cssProperties.push(
-                                            generic
-                                        );
+                                        declarations.cssProperties.push(generic);
                                         break;
                                     case "fires":
                                     case "event":
                                         declarations.events.push(generic);
                                         break;
                                     case "slot":
-                                        declarations.slot.push(generic);
+                                        declarations.slots.push(generic);
                                         break;
                                     case "csspart":
                                         declarations.cssParts.push(generic);
@@ -223,16 +293,15 @@ export default () => ({
                                 }
                             });
                     }
-                    /**
-                     * Use the object props of the functions to complete the declarations
-                     */
-                    schema?.props
-                        ?.filter(([, schema]) => schema)
-                        .forEach(([name, schema]) => {
+                    
+                    // Process props (reuse existing logic)
+                    schema.props
+                        ?.filter(([, propSchema]) => propSchema)
+                        .forEach(([name, propSchema]) => {
                             const type = {
-                                text: schema?.type?.toLowerCase(),
+                                text: propSchema?.type?.toLowerCase(),
                             };
-                            const { description } = schema;
+                            const { description } = propSchema;
 
                             declarations.members.push({
                                 name,
@@ -242,7 +311,7 @@ export default () => ({
 
                             declarations.attributes.push({
                                 name:
-                                    schema.attr ||
+                                    propSchema.attr ||
                                     name
                                         .replace(/([A-Z])/g, "-$1")
                                         .toLowerCase(),
@@ -250,19 +319,30 @@ export default () => ({
                                 description,
                             });
 
-                            if (schema.event) {
+                            if (propSchema.event) {
                                 declarations.events.push({
-                                    name: schema.event.type,
+                                    name: propSchema.event.type,
                                     type: {
-                                        text: schema.event.base,
+                                        text: propSchema.event.base,
                                     },
-                                    description: schema.event.description,
+                                    description: propSchema.event.description,
                                 });
                             }
                         });
+                    
+                    // Process events from Host<> type annotation
+                    schema.events?.forEach(({ name, type, description }) => {
+                        declarations.events.push({
+                            name,
+                            type: { text: type },
+                            description,
+                        });
+                    });
+                    
                     return declarations;
                 }
             }
+            return ref;
         });
     },
 });
