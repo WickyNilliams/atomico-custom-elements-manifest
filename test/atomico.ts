@@ -1,11 +1,11 @@
-import { c } from "atomico";
+import { c, Host } from "atomico";
 
 /**
  * Description of my component
  * @cssprop {color} --text-color - description of my custom property
  */
 export const Component = c(
-    ({ age, value }) => <host />,
+    ({ age, value }): Host<{ onMyCustomEvent: Event; myMethod: () => void }> => <host />,
     {
         props: {
             /**

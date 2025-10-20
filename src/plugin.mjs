@@ -3,6 +3,75 @@ import { parseComment } from "@uppercod/jsdoc";
 const getComment = (jsDoc) => jsDoc?.find(({ comment }) => comment)?.comment;
 
 /**
+ * Extract the type as a string from a TypeScript type node
+ */
+const getTypeText = (typeNode) => {
+    if (!typeNode) return undefined;
+
+    // Simple identifier: Event, CustomEvent, etc.
+    if (typeNode.typeName?.escapedText) {
+        return typeNode.typeName.escapedText;
+    }
+
+    // For generic types like CustomEvent<string>
+    if (typeNode.typeName && typeNode.typeArguments) {
+        return typeNode.typeName.escapedText;
+    }
+
+    return undefined;
+};
+
+/**
+ * Parse Host generic type parameter to extract events and methods
+ * Host<{ onMyEvent: Event, myMethod: () => void }>
+ */
+const parseHostType = (ts, arrowFunction) => {
+    const events = [];
+    const methods = [];
+
+    // Check if arrow function has a type annotation
+    const typeNode = arrowFunction.type;
+    if (!typeNode) return { events, methods };
+
+    // Check if it's a Host type reference
+    if (typeNode.kind === ts.SyntaxKind.TypeReference &&
+        typeNode.typeName?.escapedText === "Host") {
+
+        // Get the type arguments (the generic parameter)
+        const typeArgs = typeNode.typeArguments;
+        if (typeArgs && typeArgs.length > 0) {
+            const typeLiteral = typeArgs[0];
+
+            // Parse the type literal members
+            if (typeLiteral.kind === ts.SyntaxKind.TypeLiteral && typeLiteral.members) {
+                typeLiteral.members.forEach((member) => {
+                    const memberName = member.name?.escapedText;
+                    if (!memberName) return;
+
+                    // Events start with "on"
+                    if (memberName.startsWith("on")) {
+                        const eventName = memberName.substring(2); // Remove "on" prefix
+                        const eventType = getTypeText(member.type);
+
+                        events.push({
+                            name: eventName,
+                            type: eventType || "Event",
+                        });
+                    } else {
+                        // Everything else is a method
+                        methods.push({
+                            name: memberName,
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    return { events, methods };
+};
+
+/**
  * Parse a prop definition from the props object
  * Handles both simple types (String, Number) and extended config objects
  */
@@ -95,9 +164,10 @@ export default () => ({
                     ) {
                         const args = initializer.arguments;
 
-                        // First argument is the component function
+                        // First argument is the component function (arrow function or regular function)
                         // Second argument is the config object with props
-                        if (args.length >= 2) {
+                        if (args.length >= 1) {
+                            const componentFn = args[0];
                             const configArg = args[1];
 
                             // Extract JSDoc from the variable declaration's parent
@@ -120,6 +190,17 @@ export default () => ({
                                 constructor: varName,
                                 jsDoc,
                             };
+
+                            // Parse Host type from arrow function return type
+                            if (componentFn?.kind === ts.SyntaxKind.ArrowFunction) {
+                                const { events, methods } = parseHostType(ts, componentFn);
+                                if (events.length > 0) {
+                                    context.components[varName].hostEvents = events;
+                                }
+                                if (methods.length > 0) {
+                                    context.components[varName].hostMethods = methods;
+                                }
+                            }
 
                             // Parse props from the config object
                             if (configArg?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
@@ -189,6 +270,26 @@ export default () => ({
                                         break;
                                 }
                             });
+                    }
+
+                    // Add events from Host type generic
+                    if (schema.hostEvents) {
+                        schema.hostEvents.forEach(({ name, type }) => {
+                            declarations.events.push({
+                                name,
+                                type: { text: type },
+                            });
+                        });
+                    }
+
+                    // Add methods from Host type generic
+                    if (schema.hostMethods) {
+                        schema.hostMethods.forEach(({ name }) => {
+                            declarations.members.push({
+                                name,
+                                kind: "method",
+                            });
+                        });
                     }
 
                     // Process props to create members and attributes

@@ -10,6 +10,12 @@
                     "slots": [],
                     "events": [
                         {
+                            "name": "MyCustomEvent",
+                            "type": {
+                                "text": "Event"
+                            }
+                        },
+                        {
                             "name": "MyEvent",
                             "type": {
                                 "text": "CustomEvent"
@@ -18,6 +24,10 @@
                         }
                     ],
                     "members": [
+                        {
+                            "name": "myMethod",
+                            "kind": "method"
+                        },
                         {
                             "name": "age",
                             "type": {

@@ -75,3 +75,34 @@ export const MyComponent = c(
     }
 );
 ```
+
+### Events and Methods via Host Generic Type
+
+You can define events and methods using the `Host` generic type parameter on the component function's return type:
+
+```ts
+export const MyComponent = c(
+    ({ name }): Host<{
+        onMyCustomEvent: Event;
+        onValueChanged: CustomEvent<string>;
+        doSomething: () => void;
+        getValue: () => string;
+    }> => {
+        return <host>Hello, {name}!</host>;
+    },
+    {
+        props: {
+            name: String,
+        },
+    }
+);
+```
+
+**Event Naming Convention:**
+- Properties starting with `on` are treated as events
+- The event name is everything after the `on` prefix (e.g., `onMyCustomEvent` → `MyCustomEvent`)
+- The TypeScript type is captured (e.g., `Event`, `CustomEvent`)
+
+**Methods:**
+- Properties not starting with `on` are treated as methods
+- Both the method name is captured in the manifest
