@@ -126,9 +126,66 @@ const parseProp = (propProperty, jsDoc) => {
     return null;
 };
 
-export default () => ({
+export default () => {
+    return {
     name: 'atomico',
+    collectPhase({ ts, node, context }) {
+        // Initialize storage
+        if (!context.propObjectExportsByFile) {
+            context.propObjectExportsByFile = {};
+        }
+
+        // Track prop objects in the current file being collected
+        const sourceFile = node.getSourceFile?.();
+        if (!sourceFile) return;
+
+        const fileName = sourceFile.fileName;
+
+        switch (node.kind) {
+            /**
+             * Collect exported object literals that could be prop definitions
+             * e.g., export const baseProps = { name: String, age: Number }
+             */
+            case ts.SyntaxKind.VariableStatement:
+                {
+                    // Check if it has export modifier
+                    const hasExport = node.modifiers?.some(
+                        mod => mod.kind === ts.SyntaxKind.ExportKeyword
+                    );
+
+                    if (hasExport && node.declarationList?.declarations) {
+                        node.declarationList.declarations.forEach(decl => {
+                            const varName = decl.name?.escapedText;
+                            const initializer = decl.initializer;
+
+                            // Check if it's an object literal
+                            if (initializer?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
+                                // Parse props from this object
+                                const props = initializer.properties
+                                    ?.map(prop => {
+                                        // Skip spread elements during collection
+                                        if (prop.kind === ts.SyntaxKind.SpreadAssignment) {
+                                            return null;
+                                        }
+                                        return parseProp(prop, prop.jsDoc);
+                                    })
+                                    .filter(Boolean);
+
+                                if (props && props.length > 0) {
+                                    if (!context.propObjectExportsByFile[fileName]) {
+                                        context.propObjectExportsByFile[fileName] = {};
+                                    }
+                                    context.propObjectExportsByFile[fileName][varName] = props;
+                                }
+                            }
+                        });
+                    }
+                }
+                break;
+        }
+    },
     analyzePhase({ ts, node, context }) {
+
         switch (node.kind) {
             /**
              * Detect if the module imports `c` from `atomico`
@@ -206,9 +263,42 @@ export default () => ({
                             if (configArg?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
                                 configArg.properties?.forEach(({ name, initializer: configValue }) => {
                                     if (name.escapedText === "props" && configValue?.properties) {
-                                        context.components[varName].props = configValue.properties
-                                            .map((prop) => parseProp(prop, prop.jsDoc))
-                                            .filter(Boolean);
+                                        const props = [];
+                                        const spreads = [];
+
+                                        configValue.properties.forEach((prop) => {
+                                            // Detect spread elements
+                                            if (prop.kind === ts.SyntaxKind.SpreadAssignment) {
+                                                const spreadIdentifier = prop.expression?.escapedText;
+
+                                                if (spreadIdentifier) {
+                                                    // Find this identifier in imports
+                                                    const importInfo = context.imports?.find(
+                                                        imp => imp.name === spreadIdentifier
+                                                    );
+
+                                                    if (importInfo) {
+                                                        spreads.push({
+                                                            identifier: spreadIdentifier,
+                                                            importPath: importInfo.importPath,
+                                                            isBareModuleSpecifier: importInfo.isBareModuleSpecifier,
+                                                        });
+                                                    }
+                                                }
+                                            } else {
+                                                // Regular prop
+                                                const parsed = parseProp(prop, prop.jsDoc);
+                                                if (parsed) {
+                                                    props.push(parsed);
+                                                }
+                                            }
+                                        });
+
+                                        context.components[varName].props = props;
+
+                                        if (spreads.length > 0) {
+                                            context.components[varName].propSpreads = spreads;
+                                        }
                                     }
                                 });
                             }
@@ -219,119 +309,234 @@ export default () => ({
         }
     },
     /**
-     * Once analyzed, create the metadata from the collected component information
+     * Mark which declarations are Atomico components
+     * Actual declaration generation happens in packageLinkPhase after spreads are resolved
      */
-    moduleLinkPhase({ moduleDoc, context: { isAtomico, components } }) {
-        if (!isAtomico) return;
+    moduleLinkPhase({ ts, moduleDoc, context }) {
+        // ALWAYS create mapping from relative module path to absolute file path
+        // This is needed for ALL modules, not just ones with Atomico components
+        if (!context.modulePathMap) {
+            context.modulePathMap = {};
+        }
 
-        moduleDoc.declarations = moduleDoc.declarations.map((ref) => {
-            for (let componentName in components) {
-                const schema = components[componentName];
-                if (ref.name == schema.constructor) {
-                    const declarations = {
-                        slots: [],
-                        events: [],
-                        members: [],
-                        cssParts: [],
-                        attributes: [],
-                        cssProperties: [],
-                    };
+        if (!context.propObjectExports) {
+            context.propObjectExports = {};
+        }
 
-                    // Process JSDoc tags for CSS properties, events, slots, etc.
-                    if (schema.jsDoc) {
-                        schema.jsDoc
-                            .filter(({ tag }) => tag)
-                            .map(({ tag, comment }) =>
-                                parseComment(`@${tag} ${comment}`)
-                            )
-                            .flat()
-                            .forEach(({ tag, type: text, name, children }) => {
-                                const type = { text };
-                                const description = children?.join("\n");
-                                const generic = {
-                                    type,
-                                    description,
-                                    name,
-                                };
-                                switch (tag) {
-                                    case "cssprop":
-                                    case "cssproperty":
-                                        declarations.cssProperties.push(generic);
-                                        break;
-                                    case "fires":
-                                    case "event":
-                                        declarations.events.push(generic);
-                                        break;
-                                    case "slot":
-                                        declarations.slots.push(generic);
-                                        break;
-                                    case "csspart":
-                                        declarations.cssParts.push(generic);
-                                        break;
-                                }
-                            });
-                    }
+        // Find the source file for this module to get its absolute path
+        // We need to iterate through propObjectExportsByFile to find a match
+        if (context.propObjectExportsByFile) {
+            for (let fileName in context.propObjectExportsByFile) {
+                if (fileName.endsWith(moduleDoc.path)) {
+                    context.modulePathMap[moduleDoc.path] = fileName;
 
-                    // Add events from Host type generic
-                    if (schema.hostEvents) {
-                        schema.hostEvents.forEach(({ name, type }) => {
-                            declarations.events.push({
-                                name,
-                                type: { text: type },
-                            });
-                        });
-                    }
-
-                    // Add methods from Host type generic
-                    if (schema.hostMethods) {
-                        schema.hostMethods.forEach(({ name }) => {
-                            declarations.members.push({
-                                name,
-                                kind: "method",
-                            });
-                        });
-                    }
-
-                    // Process props to create members and attributes
-                    schema?.props
-                        ?.filter(([, propSchema]) => propSchema)
-                        .forEach(([name, propSchema]) => {
-                            const type = {
-                                text: propSchema?.type?.toLowerCase(),
-                            };
-                            const { description } = propSchema;
-
-                            declarations.members.push({
-                                name,
-                                type,
-                                description,
-                            });
-
-                            declarations.attributes.push({
-                                name:
-                                    propSchema.attr ||
-                                    name
-                                        .replace(/([A-Z])/g, "-$1")
-                                        .toLowerCase(),
-                                type,
-                                description,
-                            });
-
-                            if (propSchema.event) {
-                                declarations.events.push({
-                                    name: propSchema.event.type,
-                                    type: {
-                                        text: propSchema.event.base,
-                                    },
-                                    description: propSchema.event.description,
-                                });
-                            }
-                        });
-
-                    return declarations;
+                    // Also create a normalized prop exports map by relative path
+                    context.propObjectExports[moduleDoc.path] = context.propObjectExportsByFile[fileName];
+                    break;
                 }
             }
-            return ref;
+        }
+
+        // Only process Atomico components if present
+        if (context.isAtomico && context.components) {
+            // Store component schemas by module path for packageLinkPhase
+            if (!context.componentsByModule) {
+                context.componentsByModule = {};
+            }
+            context.componentsByModule[moduleDoc.path] = context.components;
+
+            // Reset for next module
+            context.isAtomico = false;
+            context.components = {};
+        }
+    },
+
+    /**
+     * Resolve spreads and generate all component metadata
+     */
+    packageLinkPhase({ customElementsManifest, context }) {
+        if (!context.componentsByModule) return;
+
+        // Helper to resolve import path relative to current module
+        const resolveImportPath = (currentModulePath, importPath, isBareModuleSpecifier) => {
+            if (isBareModuleSpecifier) {
+                // Can't resolve node_modules imports
+                return null;
+            }
+
+            // Find the module in the manifest that matches this import
+            const currentModule = customElementsManifest.modules.find(
+                m => m.path === currentModulePath
+            );
+
+            if (!currentModule) return null;
+
+            // Simple relative path resolution
+            // TODO: Handle more complex cases like ../ and ./
+            const basePath = currentModulePath.substring(0, currentModulePath.lastIndexOf('/'));
+            const resolvedPath = importPath.startsWith('./')
+                ? `${basePath}/${importPath.substring(2)}`
+                : importPath;
+
+            // Try to find exact match
+            let targetModule = customElementsManifest.modules.find(m => m.path === resolvedPath);
+
+            // Try with .ts extension
+            if (!targetModule) {
+                targetModule = customElementsManifest.modules.find(m => m.path === `${resolvedPath}.ts`);
+            }
+
+            return targetModule?.path || null;
+        };
+
+        // First, resolve all spreads
+        for (let modulePath in context.componentsByModule) {
+            const components = context.componentsByModule[modulePath];
+
+            for (let componentName in components) {
+                const schema = components[componentName];
+
+                if (schema.propSpreads && schema.propSpreads.length > 0) {
+                    const resolvedProps = [];
+
+                    // Resolve each spread
+                    schema.propSpreads.forEach(spread => {
+                        const targetPath = resolveImportPath(
+                            modulePath,
+                            spread.importPath,
+                            spread.isBareModuleSpecifier
+                        );
+
+                        if (targetPath && context.propObjectExports[targetPath]) {
+                            const exportedProps = context.propObjectExports[targetPath][spread.identifier];
+                            if (exportedProps) {
+                                resolvedProps.push(...exportedProps);
+                            }
+                        }
+                    });
+
+                    // Merge spread props with component props
+                    // Spread props come first, then component props can override
+                    schema.props = [...resolvedProps, ...(schema.props || [])];
+                }
+            }
+        }
+
+        // Now generate declarations for all modules
+        customElementsManifest.modules.forEach(module => {
+            const components = context.componentsByModule[module.path];
+            if (!components) return;
+
+            module.declarations = module.declarations.map((ref) => {
+                for (let componentName in components) {
+                    const schema = components[componentName];
+                    if (ref.name == schema.constructor) {
+                        const declarations = {
+                            slots: [],
+                            events: [],
+                            members: [],
+                            cssParts: [],
+                            attributes: [],
+                            cssProperties: [],
+                        };
+
+                        // Process JSDoc tags for CSS properties, events, slots, etc.
+                        if (schema.jsDoc) {
+                            schema.jsDoc
+                                .filter(({ tag }) => tag)
+                                .map(({ tag, comment }) =>
+                                    parseComment(`@${tag} ${comment}`)
+                                )
+                                .flat()
+                                .forEach(({ tag, type: text, name, children }) => {
+                                    const type = { text };
+                                    const description = children?.join("\n");
+                                    const generic = {
+                                        type,
+                                        description,
+                                        name,
+                                    };
+                                    switch (tag) {
+                                        case "cssprop":
+                                        case "cssproperty":
+                                            declarations.cssProperties.push(generic);
+                                            break;
+                                        case "fires":
+                                        case "event":
+                                            declarations.events.push(generic);
+                                            break;
+                                        case "slot":
+                                            declarations.slots.push(generic);
+                                            break;
+                                        case "csspart":
+                                            declarations.cssParts.push(generic);
+                                            break;
+                                    }
+                                });
+                        }
+
+                        // Add events from Host type generic
+                        if (schema.hostEvents) {
+                            schema.hostEvents.forEach(({ name, type }) => {
+                                declarations.events.push({
+                                    name,
+                                    type: { text: type },
+                                });
+                            });
+                        }
+
+                        // Add methods from Host type generic
+                        if (schema.hostMethods) {
+                            schema.hostMethods.forEach(({ name }) => {
+                                declarations.members.push({
+                                    name,
+                                    kind: "method",
+                                });
+                            });
+                        }
+
+                        // Process props to create members and attributes
+                        schema?.props
+                            ?.filter(([, propSchema]) => propSchema)
+                            .forEach(([name, propSchema]) => {
+                                const type = {
+                                    text: propSchema?.type?.toLowerCase(),
+                                };
+                                const { description } = propSchema;
+
+                                declarations.members.push({
+                                    name,
+                                    type,
+                                    description,
+                                });
+
+                                declarations.attributes.push({
+                                    name:
+                                        propSchema.attr ||
+                                        name
+                                            .replace(/([A-Z])/g, "-$1")
+                                            .toLowerCase(),
+                                    type,
+                                    description,
+                                });
+
+                                if (propSchema.event) {
+                                    declarations.events.push({
+                                        name: propSchema.event.type,
+                                        type: {
+                                            text: propSchema.event.base,
+                                        },
+                                        description: propSchema.event.description,
+                                    });
+                                }
+                            });
+
+                        return declarations;
+                    }
+                }
+                return ref;
+            });
         });
     },
-});
+    };
+};

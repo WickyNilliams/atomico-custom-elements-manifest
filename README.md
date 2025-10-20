@@ -106,3 +106,32 @@ export const MyComponent = c(
 **Methods:**
 - Properties not starting with `on` are treated as methods
 - Both the method name is captured in the manifest
+
+### Sharing Props with Spread Syntax
+
+You can share common props between components by spreading imported prop objects:
+
+```ts
+// base-props.ts
+export const baseProps = {
+    id: String,
+    name: String,
+    disabled: Boolean,
+};
+
+// my-component.ts
+import { c } from "atomico";
+import { baseProps } from "./base-props";
+
+export const MyComponent = c(
+    ({ id, name, disabled, customProp }) => <host>...</host>,
+    {
+        props: {
+            ...baseProps,
+            customProp: Number,
+        },
+    }
+);
+```
+
+The spread props will be resolved and included in the component's manifest. Props defined directly in the component can override spread props if they have the same name.

@@ -29,6 +29,20 @@
               "kind": "method"
             },
             {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "description": "The name property"
+            },
+            {
+              "name": "id",
+              "type": {
+                "text": "number"
+              },
+              "description": "The ID property"
+            },
+            {
               "name": "age",
               "type": {
                 "text": "number"
@@ -45,6 +59,20 @@
           ],
           "cssParts": [],
           "attributes": [
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "description": "The name property"
+            },
+            {
+              "name": "id",
+              "type": {
+                "text": "number"
+              },
+              "description": "The ID property"
+            },
             {
               "name": "age",
               "type": {
@@ -86,6 +114,27 @@
           "declaration": {
             "name": "Component",
             "module": "test/atomico.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/base-props.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "baseProps",
+          "description": "Shared base props for components"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "baseProps",
+          "declaration": {
+            "name": "baseProps",
+            "module": "test/base-props.ts"
           }
         }
       ]
