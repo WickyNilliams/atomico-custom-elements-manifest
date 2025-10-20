@@ -135,3 +135,23 @@ export const MyComponent = c(
 ```
 
 The spread props will be resolved and included in the component's manifest. Props defined directly in the component can override spread props if they have the same name.
+
+You can also use imported prop objects directly without spreading:
+
+```ts
+// Using direct reference
+export const MyComponent = c(
+    ({ id, name }) => <host>...</host>,
+    {
+        props: baseProps,  // Direct reference
+    }
+);
+
+// Using shorthand syntax
+import { baseProps as props } from "./base-props";
+
+export const MyComponent = c(
+    ({ id, name }) => <host>...</host>,
+    { props }  // Shorthand for { props: props }
+);
+```

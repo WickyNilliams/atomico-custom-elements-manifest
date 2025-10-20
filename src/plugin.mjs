@@ -222,10 +222,18 @@ export default () => {
                         const args = initializer.arguments;
 
                         // First argument is the component function (arrow function or regular function)
-                        // Second argument is the config object with props
+                        // Find the config object - it's the last argument that's an ObjectLiteralExpression
                         if (args.length >= 1) {
                             const componentFn = args[0];
-                            const configArg = args[1];
+
+                            // Find config object (last ObjectLiteralExpression argument)
+                            let configArg = null;
+                            for (let i = args.length - 1; i >= 1; i--) {
+                                if (args[i].kind === ts.SyntaxKind.ObjectLiteralExpression) {
+                                    configArg = args[i];
+                                    break;
+                                }
+                            }
 
                             // Extract JSDoc from the variable declaration's parent
                             const jsDoc = node.parent?.parent?.jsDoc
@@ -261,43 +269,112 @@ export default () => {
 
                             // Parse props from the config object
                             if (configArg?.kind === ts.SyntaxKind.ObjectLiteralExpression) {
-                                configArg.properties?.forEach(({ name, initializer: configValue }) => {
-                                    if (name.escapedText === "props" && configValue?.properties) {
-                                        const props = [];
-                                        const spreads = [];
+                                configArg.properties?.forEach((prop) => {
+                                    // Handle shorthand property: { props } instead of { props: props }
+                                    if (prop.kind === ts.SyntaxKind.ShorthandPropertyAssignment) {
+                                        if (prop.name?.escapedText === "props") {
+                                            const identifier = prop.name.escapedText;
+                                            const importInfo = context.imports?.find(
+                                                imp => imp.name === identifier
+                                            );
 
-                                        configValue.properties.forEach((prop) => {
-                                            // Detect spread elements
-                                            if (prop.kind === ts.SyntaxKind.SpreadAssignment) {
-                                                const spreadIdentifier = prop.expression?.escapedText;
+                                            if (importInfo) {
+                                                // For shorthand, we need to find the original export name
+                                                // The identifier might be an alias (e.g., import { baseProps as props })
+                                                // We need to find the original export name from the import specifier
+                                                let exportName = identifier;
 
-                                                if (spreadIdentifier) {
-                                                    // Find this identifier in imports
-                                                    const importInfo = context.imports?.find(
-                                                        imp => imp.name === spreadIdentifier
-                                                    );
-
-                                                    if (importInfo) {
-                                                        spreads.push({
-                                                            identifier: spreadIdentifier,
-                                                            importPath: importInfo.importPath,
-                                                            isBareModuleSpecifier: importInfo.isBareModuleSpecifier,
-                                                        });
-                                                    }
+                                                // Try to find the import specifier in the AST
+                                                const sourceFile = node.getSourceFile?.();
+                                                if (sourceFile) {
+                                                    sourceFile.forEachChild(child => {
+                                                        if (child.kind === ts.SyntaxKind.ImportDeclaration) {
+                                                            const importClause = child.importClause;
+                                                            if (importClause?.namedBindings?.kind === ts.SyntaxKind.NamedImports) {
+                                                                importClause.namedBindings.elements.forEach(specifier => {
+                                                                    if (specifier.name?.escapedText === identifier) {
+                                                                        // If propertyName exists, it's the original export name
+                                                                        // If not, name is both the export and local name
+                                                                        exportName = specifier.propertyName?.escapedText || specifier.name.escapedText;
+                                                                    }
+                                                                });
+                                                            }
+                                                        }
+                                                    });
                                                 }
-                                            } else {
-                                                // Regular prop
-                                                const parsed = parseProp(prop, prop.jsDoc);
-                                                if (parsed) {
-                                                    props.push(parsed);
+
+                                                // Store as a direct prop reference
+                                                context.components[varName].propReference = {
+                                                    identifier: exportName,  // Use the original export name
+                                                    importPath: importInfo.importPath,
+                                                    isBareModuleSpecifier: importInfo.isBareModuleSpecifier,
+                                                };
+                                                context.components[varName].props = [];
+                                            }
+                                        }
+                                    }
+                                    // Handle regular property assignment
+                                    else if (prop.kind === ts.SyntaxKind.PropertyAssignment) {
+                                        const { name, initializer: configValue } = prop;
+
+                                        if (name.escapedText === "props") {
+                                            // Check if props is a direct reference to an imported object
+                                            // e.g., props: sharedProps
+                                            if (configValue?.kind === ts.SyntaxKind.Identifier) {
+                                                const identifier = configValue.escapedText;
+                                                const importInfo = context.imports?.find(
+                                                    imp => imp.name === identifier
+                                                );
+
+                                                if (importInfo) {
+                                                    // Store as a direct prop reference
+                                                    context.components[varName].propReference = {
+                                                        identifier,
+                                                        importPath: importInfo.importPath,
+                                                        isBareModuleSpecifier: importInfo.isBareModuleSpecifier,
+                                                    };
+                                                    context.components[varName].props = [];
                                                 }
                                             }
-                                        });
+                                            // Check if props is an object literal with properties
+                                            else if (configValue?.properties) {
+                                                const props = [];
+                                                const spreads = [];
 
-                                        context.components[varName].props = props;
+                                                configValue.properties.forEach((prop) => {
+                                                    // Detect spread elements
+                                                    if (prop.kind === ts.SyntaxKind.SpreadAssignment) {
+                                                        const spreadIdentifier = prop.expression?.escapedText;
 
-                                        if (spreads.length > 0) {
-                                            context.components[varName].propSpreads = spreads;
+                                                        if (spreadIdentifier) {
+                                                            // Find this identifier in imports
+                                                            const importInfo = context.imports?.find(
+                                                                imp => imp.name === spreadIdentifier
+                                                            );
+
+                                                            if (importInfo) {
+                                                                spreads.push({
+                                                                    identifier: spreadIdentifier,
+                                                                    importPath: importInfo.importPath,
+                                                                    isBareModuleSpecifier: importInfo.isBareModuleSpecifier,
+                                                                });
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // Regular prop
+                                                        const parsed = parseProp(prop, prop.jsDoc);
+                                                        if (parsed) {
+                                                            props.push(parsed);
+                                                        }
+                                                    }
+                                                });
+
+                                                context.components[varName].props = props;
+
+                                                if (spreads.length > 0) {
+                                                    context.components[varName].propSpreads = spreads;
+                                                }
+                                            }
                                         }
                                     }
                                 });
@@ -389,14 +466,31 @@ export default () => {
             return targetModule?.path || null;
         };
 
-        // First, resolve all spreads
+        // First, resolve all prop references and spreads
         for (let modulePath in context.componentsByModule) {
             const components = context.componentsByModule[modulePath];
 
             for (let componentName in components) {
                 const schema = components[componentName];
 
-                if (schema.propSpreads && schema.propSpreads.length > 0) {
+                // Handle direct prop references (props: sharedProps)
+                if (schema.propReference) {
+                    const ref = schema.propReference;
+                    const targetPath = resolveImportPath(
+                        modulePath,
+                        ref.importPath,
+                        ref.isBareModuleSpecifier
+                    );
+
+                    if (targetPath && context.propObjectExports[targetPath]) {
+                        const exportedProps = context.propObjectExports[targetPath][ref.identifier];
+                        if (exportedProps) {
+                            schema.props = [...exportedProps];
+                        }
+                    }
+                }
+                // Handle spreads (props: { ...sharedProps, other: String })
+                else if (schema.propSpreads && schema.propSpreads.length > 0) {
                     const resolvedProps = [];
 
                     // Resolve each spread
