@@ -138,6 +138,578 @@
           }
         }
       ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/direct-reference.ts",
+      "declarations": [
+        {
+          "slots": [],
+          "events": [
+            {
+              "type": {
+                "text": ""
+              },
+              "description": "Emitted when clicked",
+              "name": "custom-click"
+            }
+          ],
+          "members": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            }
+          ],
+          "cssParts": [
+            {
+              "type": {
+                "text": ""
+              },
+              "description": "The button part",
+              "name": "button"
+            }
+          ],
+          "attributes": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            }
+          ],
+          "cssProperties": []
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "DirectRefComponent",
+          "declaration": {
+            "name": "DirectRefComponent",
+            "module": "test/direct-reference.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "direct-ref",
+          "declaration": {
+            "name": "DirectRefComponent",
+            "module": "test/direct-reference.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/multiple-components.ts",
+      "declarations": [
+        {
+          "slots": [],
+          "events": [],
+          "members": [
+            {
+              "name": "title",
+              "type": {
+                "text": "string"
+              },
+              "description": "Component title"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [
+            {
+              "name": "title",
+              "type": {
+                "text": "string"
+              },
+              "description": "Component title"
+            }
+          ],
+          "cssProperties": []
+        },
+        {
+          "slots": [],
+          "events": [],
+          "members": [
+            {
+              "name": "count",
+              "type": {
+                "text": "number"
+              },
+              "description": "Current count"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [
+            {
+              "name": "count",
+              "type": {
+                "text": "number"
+              },
+              "description": "Current count"
+            }
+          ],
+          "cssProperties": [
+            {
+              "type": {
+                "text": "length"
+              },
+              "description": "Controls spacing",
+              "name": "--spacing"
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FirstComponent",
+          "declaration": {
+            "name": "FirstComponent",
+            "module": "test/multiple-components.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "SecondComponent",
+          "declaration": {
+            "name": "SecondComponent",
+            "module": "test/multiple-components.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "first-comp",
+          "declaration": {
+            "name": "FirstComponent",
+            "module": "test/multiple-components.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "second-comp",
+          "declaration": {
+            "name": "SecondComponent",
+            "module": "test/multiple-components.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/multiple-spreads.ts",
+      "declarations": [
+        {
+          "slots": [
+            {
+              "type": {
+                "text": ""
+              },
+              "description": "Default content slot",
+              "name": "default"
+            }
+          ],
+          "events": [],
+          "members": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            },
+            {
+              "name": "className",
+              "type": {
+                "text": "string"
+              },
+              "description": "CSS class name"
+            },
+            {
+              "name": "style",
+              "type": {
+                "text": "object"
+              },
+              "description": "Inline styles"
+            },
+            {
+              "name": "active",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Whether the component is active"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            },
+            {
+              "name": "class-name",
+              "type": {
+                "text": "string"
+              },
+              "description": "CSS class name"
+            },
+            {
+              "name": "style",
+              "type": {
+                "text": "object"
+              },
+              "description": "Inline styles"
+            },
+            {
+              "name": "active",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Whether the component is active"
+            }
+          ],
+          "cssProperties": []
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "MultiSpreadComponent",
+          "declaration": {
+            "name": "MultiSpreadComponent",
+            "module": "test/multiple-spreads.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "multi-spread",
+          "declaration": {
+            "name": "MultiSpreadComponent",
+            "module": "test/multiple-spreads.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/no-props.ts",
+      "declarations": [
+        {
+          "slots": [
+            {
+              "type": {
+                "text": ""
+              },
+              "description": "Main content area",
+              "name": "content"
+            }
+          ],
+          "events": [
+            {
+              "name": "Ready",
+              "type": {
+                "text": "Event"
+              }
+            },
+            {
+              "name": "Click",
+              "type": {
+                "text": "MouseEvent"
+              }
+            }
+          ],
+          "members": [
+            {
+              "name": "show",
+              "kind": "method"
+            },
+            {
+              "name": "hide",
+              "kind": "method"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [],
+          "cssProperties": []
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "NoPropsComponent",
+          "declaration": {
+            "name": "NoPropsComponent",
+            "module": "test/no-props.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "no-props",
+          "declaration": {
+            "name": "NoPropsComponent",
+            "module": "test/no-props.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/prop-types.ts",
+      "declarations": [
+        {
+          "slots": [],
+          "events": [
+            {
+              "name": "DataChange",
+              "type": {
+                "text": "CustomEvent"
+              }
+            }
+          ],
+          "members": [
+            {
+              "name": "reset",
+              "kind": "method"
+            },
+            {
+              "name": "stringProp",
+              "type": {
+                "text": "string"
+              },
+              "description": "String property"
+            },
+            {
+              "name": "numberProp",
+              "type": {
+                "text": "number"
+              },
+              "description": "Number property"
+            },
+            {
+              "name": "boolProp",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Boolean property"
+            },
+            {
+              "name": "arrayProp",
+              "type": {
+                "text": "array"
+              },
+              "description": "Array property"
+            },
+            {
+              "name": "objectProp",
+              "type": {
+                "text": "object"
+              },
+              "description": "Object property"
+            },
+            {
+              "name": "customAttr",
+              "type": {
+                "text": "string"
+              },
+              "description": "Property with custom attribute name"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [
+            {
+              "name": "string-prop",
+              "type": {
+                "text": "string"
+              },
+              "description": "String property"
+            },
+            {
+              "name": "number-prop",
+              "type": {
+                "text": "number"
+              },
+              "description": "Number property"
+            },
+            {
+              "name": "bool-prop",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Boolean property"
+            },
+            {
+              "name": "array-prop",
+              "type": {
+                "text": "array"
+              },
+              "description": "Array property"
+            },
+            {
+              "name": "object-prop",
+              "type": {
+                "text": "object"
+              },
+              "description": "Object property"
+            },
+            {
+              "name": "custom-attr",
+              "type": {
+                "text": "string"
+              },
+              "description": "Property with custom attribute name"
+            }
+          ],
+          "cssProperties": []
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "PropTypesComponent",
+          "declaration": {
+            "name": "PropTypesComponent",
+            "module": "test/prop-types.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "prop-types",
+          "declaration": {
+            "name": "PropTypesComponent",
+            "module": "test/prop-types.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/shared-props.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "commonProps",
+          "description": "Additional shared props for testing"
+        },
+        {
+          "kind": "variable",
+          "name": "styleProps"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "commonProps",
+          "declaration": {
+            "name": "commonProps",
+            "module": "test/shared-props.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "styleProps",
+          "declaration": {
+            "name": "styleProps",
+            "module": "test/shared-props.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "test/shorthand-syntax.ts",
+      "declarations": [
+        {
+          "slots": [],
+          "events": [],
+          "members": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            }
+          ],
+          "cssParts": [],
+          "attributes": [
+            {
+              "name": "id",
+              "type": {
+                "text": "string"
+              },
+              "description": "Unique identifier"
+            },
+            {
+              "name": "label",
+              "type": {
+                "text": "string"
+              },
+              "description": "Display label"
+            }
+          ],
+          "cssProperties": []
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "ShorthandComponent",
+          "declaration": {
+            "name": "ShorthandComponent",
+            "module": "test/shorthand-syntax.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "shorthand-comp",
+          "declaration": {
+            "name": "ShorthandComponent",
+            "module": "test/shorthand-syntax.ts"
+          }
+        }
+      ]
     }
   ]
 }
